@@ -28,7 +28,8 @@
   - openjdk-8-jre
 
 # download only in the ansible master node
-- local_action: get_url url={{ hadoop_mirrors|random }}/hadoop-{{ hadoop_version }}.tar.gz dest=/opt/hadoop-{{ hadoop_version }}.tar.gz force=no
+- local_action: get_url url={{ hadoop_mirrors|random }}/hadoop-{{ hadoop_version }}.tar.gz dest={{ hadoop_download_path }}/hadoop-{{ hadoop_version }}.tar.gz force=no
+  become: no
   register: result
   until: result|success
   retries: 5
@@ -36,10 +37,11 @@
   when: hadoop_type_of_node == 'master'
 
 # other nodes wait for it
-- local_action: wait_for path=/opt/hadoop-{{ hadoop_version }}.tar.gz
+- local_action: wait_for path={{ hadoop_download_path }}//hadoop-{{ hadoop_version }}.tar.gz
+  become: no
   when: hadoop_type_of_node != 'master'
 
-- copy: src=/opt/hadoop-{{ hadoop_version }}.tar.gz dest=/opt/hadoop-{{ hadoop_version }}.tar.gz force=no
+- copy: src={{ hadoop_download_path}}/hadoop-{{ hadoop_version }}.tar.gz dest=/opt/hadoop-{{ hadoop_version }}.tar.gz force=no
 
 - unarchive: src=/opt/hadoop-{{ hadoop_version }}.tar.gz dest=/opt creates=/opt/hadoop-{{ hadoop_version }} copy=no
 
@@ -47,7 +49,8 @@
 
 - file: dest=/opt/hadoop src={{ hadoop_home }} state=link
 
-- lineinfile: dest="{{ hadoop_home }}/etc/hadoop/hadoop-env.sh" regexp=JAVA_HOME= line="export JAVA_HOME={{item}}"
-  with_first_found:
-   - /usr/lib/jvm/java-8-openjdk-amd64
-   - /usr/lib/jvm/jre-1.8.0
+- name: Find path for Java executable
+  shell: 'find -L /usr/lib/jvm -name java -executable | head -n 1 | xargs dirname'
+  register: java_register_env
+
+- lineinfile: dest={{ hadoop_home }}/etc/hadoop/hadoop-env.sh regexp="^export JAVA_HOME=" line="export JAVA_HOME={{ java_register_env.stdout }}/../.."
